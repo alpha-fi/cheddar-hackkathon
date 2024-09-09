@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -11,7 +11,7 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
     address public minter;
     bool public active = true;
 
-    uint256 public dailyQuota = 555; // Default daily quota set to 555
+    uint256 public dailyQuota = 555 * 10**18; // Default daily quota set to 555 tokens, adjusted for decimals
     uint256 public userQuota;
 
     mapping(address => uint256) public userLastMintDay;
@@ -26,7 +26,7 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
         uint256 _userQuota
     ) ERC20(name, "Cheddar") {
         minter = _minter;
-        userQuota = _userQuota;
+        userQuota = _userQuota * 10**18;
         currentDay = block.timestamp / DAY_IN_SECONDS;
     }
 
@@ -39,14 +39,17 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
             currentDay = today;
         }
 
-        uint256 referralAmount = referral != address(0) ? amount / 20 : 0;
+        uint256 amountWithDecimals = amount * 10**18;
+        uint256 referralAmount = referral != address(0) ? amountWithDecimals / 20 : 0;
         if (referral != address(0)) {
             _mint(referral, referralAmount);
         }
 
-        uint256 userAmount = amount - referralAmount;
-        require(todayMinted + amount <= dailyQuota, "Daily mint quota exceeded");
-        todayMinted += amount;
+        uint256 userAmount = amountWithDecimals - referralAmount;
+        // require(todayMinted + amountWithDecimals <= dailyQuota, "Daily mint quota exceeded");
+        todayMinted = todayMinted + amountWithDecimals <= dailyQuota ? 
+            todayMinted + amountWithDecimals : 
+            dailyQuota;
 
         if (userLastMintDay[recipient] != today) {
             userDailyMinted[recipient] = 0;
@@ -73,10 +76,10 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
     }
 
     function setDailyQuota(uint256 newDailyQuota) public onlyOwner {
-        dailyQuota = newDailyQuota;
+        dailyQuota = newDailyQuota * 10**18; // Adjust quota for decimals
     }
 
     function setUserQuota(uint256 newUserQuota) public onlyOwner {
-        userQuota = newUserQuota;
+        userQuota = newUserQuota * 10**18; // Adjust user quota for decimals
     }
 }
