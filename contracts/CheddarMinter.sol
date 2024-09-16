@@ -3,7 +3,8 @@ pragma solidity ^0.8.20;
 
 import "./CheddarToken.sol";
 
-contract CheddarMinter is CheddarToken {
+contract CheddarMinter {
+    CheddarToken public cheddarToken;
     uint256 public dailyQuota;
     uint256 public userQuota;
     uint256 public dailyMints;
@@ -24,18 +25,18 @@ contract CheddarMinter is CheddarToken {
     );
 
     constructor(
-        string memory name,
-        string memory symbol,
+        address cheddarTokenAddress,
         uint256 _dailyQuota,
         uint256 _userQuota
-    ) CheddarToken(name, symbol) {
-        dailyQuota = _dailyQuota;
-        userQuota = _userQuota;
+    ) {
+        cheddarToken = CheddarToken(cheddarTokenAddress);
+        dailyQuota = _dailyQuota; // Adjust for decimals
+        userQuota = _userQuota; // Adjust for decimals
         lastMintDay = block.timestamp / 1 days;
     }
 
     /// @notice Set the minimum gas requirement for minting
-    /// @dev This simulates the gas check from NEAR by requiring a certain minimum gas limit.
+    /// @dev This simulates the gas check by requiring a certain minimum gas limit.
     modifier requireMinGas(uint256 minGas) {
         require(gasleft() >= minGas, "Insufficient gas for minting");
         _;
@@ -51,7 +52,6 @@ contract CheddarMinter is CheddarToken {
         address referral
     )
         external
-        onlyMinter
         requireMinGas(30000) // Require at least 30,000 gas
     {
         uint256 currentDay = block.timestamp / 1 days;
@@ -67,33 +67,29 @@ contract CheddarMinter is CheddarToken {
 
         // Check and update user's daily mint
         UserDailyMint storage userMint = userMints[recipient];
+        // Ensure the user quota is not exceeded
+        require(
+            userMint.minted + amount <= userQuota,
+            "User mint quota exceeded"
+        );
+
         if (userMint.day < currentDay) {
             userMint.day = currentDay;
             userMint.minted = 0;
         }
 
-        uint256 referralMint = referral != address(0) ? amount / 20 : 0; // 5% to referral
-        uint256 userAmount = amount - referralMint;
-
-        // Ensure the user quota is not exceeded
-        require(
-            userMint.minted + userAmount <= userQuota,
-            "User mint quota exceeded"
+        // Mint tokens using the new mint function from CheddarToken
+        (uint256 mintedAmount, uint256 referralAmount) = cheddarToken.mint(
+            recipient,
+            amount,
+            referral
         );
 
-        // Update daily and user mints
-        dailyMints += amount;
-        userMint.minted += userAmount;
+        // Update daily and user mints based on actual minting
+        dailyMints += mintedAmount;
+        userMint.minted += mintedAmount;
 
-        // Mint tokens to the recipient
-        _mint(recipient, userAmount);
-
-        // Mint tokens to the referral if provided
-        if (referral != address(0)) {
-            _mint(referral, referralMint);
-        }
-
-        emit TokensMinted(recipient, userAmount, referral, referralMint);
+        emit TokensMinted(recipient, mintedAmount, referral, referralAmount);
     }
 
     /// @notice Returns the user's mint data
@@ -108,22 +104,14 @@ contract CheddarMinter is CheddarToken {
     }
 
     /// @notice Returns the contract configuration
-    /// @return minter The current minter address
-    /// @return active The contract's active state
     /// @return dailyQuota The daily mint quota
     /// @return userQuota The per-user mint quota
     /// @return dailyMints The amount minted so far today
     function getConfig()
         external
         view
-        returns (
-            address minter,
-            bool active,
-            uint256 dailyQuota,
-            uint256 userQuota,
-            uint256 dailyMints
-        )
+        returns (uint256 dailyQuota, uint256 userQuota, uint256 dailyMints)
     {
-        return (minter, active, dailyQuota, userQuota, dailyMints);
+        return (dailyQuota, userQuota, dailyMints);
     }
 }

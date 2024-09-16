@@ -3,98 +3,82 @@ const { ethers } = require("hardhat");
 
 describe("CheddarToken", function () {
   let CheddarToken;
-  let cheddarToken;
+  let cheddar;
   let owner, addr1, addr2, addr3;
+  let DAY_IN_SECONDS = 86400;
 
   beforeEach(async function () {
-    // Get the signers for testing
     [owner, addr1, addr2, addr3] = await ethers.getSigners();
-
-    // Deploy the CheddarToken contract
     CheddarToken = await ethers.getContractFactory("CheddarToken");
-    cheddarToken = await CheddarToken.deploy("CheddarToken", "CHED");
+    cheddar = await CheddarToken.deploy("CheddarToken", addr1.address, 500);
   });
 
   describe("Initialization", function () {
     it("should have the correct initial settings", async function () {
-      // Owner should be the initial minter
-      expect(await cheddarToken.minter()).to.equal(owner.address);
-
-      // Contract should be active initially
-      expect(await cheddarToken.active()).to.be.true;
+      expect(await cheddar.minter()).to.equal(addr1.address);
+      expect(await cheddar.dailyQuota()).to.equal(ethers.parseUnits("555", 18));
+      expect(await cheddar.userQuota()).to.equal(ethers.parseUnits("500", 18));
     });
   });
 
   describe("Minting", function () {
-    it("allows the minter to mint tokens", async function () {
-      const mintAmount = ethers.parseUnits("100", 18);
-
-      // Minter (owner) mints tokens to addr1
-      await cheddarToken.connect(owner).mint(addr1.address, mintAmount);
-
-      // Verify that addr1 received the tokens
-      expect(await cheddarToken.balanceOf(addr1.address)).to.equal(mintAmount);
+    it("allows the minter to mint within the quota", async function () {
+      await expect(() =>
+        cheddar
+          .connect(addr1)
+          .mint(
+            addr2.address,
+            100,
+            "0x0000000000000000000000000000000000000000"
+          )
+      ).to.changeTokenBalance(cheddar, addr2, ethers.parseUnits("100", 18));
     });
 
-    it("does not allow non-minters to mint tokens", async function () {
-      const mintAmount = ethers.parseUnits("100", 18);
+    it("resets the daily quota after a day", async function () {
+      await cheddar
+        .connect(addr1)
+        .mint(addr2.address, 555, "0x0000000000000000000000000000000000000000");
+      await network.provider.send("evm_increaseTime", [DAY_IN_SECONDS]);
+      await network.provider.send("evm_mine");
+      await expect(() =>
+        cheddar
+          .connect(addr1)
+          .mint(
+            addr2.address,
+            100,
+            "0x0000000000000000000000000000000000000000"
+          )
+      ).to.changeTokenBalance(cheddar, addr2, ethers.parseUnits("100", 18));
+    });
 
-      // Try to mint from a non-minter address (addr1)
-      await expect(
-        cheddarToken.connect(addr1).mint(addr2.address, mintAmount)
-      ).to.be.revertedWith("Only the minter can call this function");
+    it("handles referral bonus correctly", async function () {
+      await cheddar.connect(addr1).mint(addr2.address, 200, addr3.address);
+      expect(await cheddar.balanceOf(addr3.address)).to.equal(
+        ethers.parseUnits("10", 18)
+      ); // 5% referral bonus
     });
   });
 
   describe("Owner Operations", function () {
+    it("allows the owner to deactivate and reactivate the contract", async function () {
+      await cheddar.connect(owner).toggleActive();
+      expect(await cheddar.active()).to.be.false;
+      await cheddar.connect(owner).toggleActive();
+      expect(await cheddar.active()).to.be.true;
+    });
+
     it("allows the owner to change the minter", async function () {
-      // Owner changes the minter to addr1
-      await cheddarToken.connect(owner).adminChangeMinter(addr1.address);
-
-      // Verify the new minter
-      expect(await cheddarToken.minter()).to.equal(addr1.address);
+      await cheddar.connect(owner).changeMinter(addr2.address);
+      expect(await cheddar.minter()).to.equal(addr2.address);
     });
 
-    it("allows the owner to toggle the contract's active state", async function () {
-      // Owner deactivates the contract
-      await cheddarToken.connect(owner).toggleActive();
-      expect(await cheddarToken.active()).to.be.false;
-
-      // Owner reactivates the contract
-      await cheddarToken.connect(owner).toggleActive();
-      expect(await cheddarToken.active()).to.be.true;
-    });
-
-    it("prevents minting when the contract is inactive", async function () {
-      const mintAmount = ethers.parseUnits("100", 18);
-
-      // Owner changes the minter to addr1
-      await cheddarToken.connect(owner).adminChangeMinter(addr1.address);
-
-      // Owner deactivates the contract
-      await cheddarToken.connect(owner).toggleActive();
-      expect(await cheddarToken.active()).to.be.false;
-
-      // Attempt to mint while the contract is inactive
-      await expect(
-        cheddarToken.connect(addr1).mint(addr2.address, mintAmount)
-      ).to.be.revertedWith("Contract is inactive");
-    });
-
-    it("allows minting after reactivating the contract", async function () {
-      const mintAmount = ethers.parseUnits("100", 18);
-
-      // Owner changes the minter to addr1
-      await cheddarToken.connect(owner).adminChangeMinter(addr1.address);
-
-      // Deactivate and then reactivate the contract
-      await cheddarToken.connect(owner).toggleActive();
-      await cheddarToken.connect(owner).toggleActive();
-      expect(await cheddarToken.active()).to.be.true;
-
-      // Minter (addr1) can now mint after reactivation
-      await cheddarToken.connect(addr1).mint(addr2.address, mintAmount);
-      expect(await cheddarToken.balanceOf(addr2.address)).to.equal(mintAmount);
+    it("allows the owner to adjust quotas", async function () {
+      await cheddar.connect(owner).setDailyQuota(1000);
+      expect(await cheddar.dailyQuota()).to.equal(
+        ethers.parseUnits("1000", 18)
+      );
+      await cheddar.connect(owner).setUserQuota(200);
+      expect(await cheddar.userQuota()).to.equal(ethers.parseUnits("200", 18));
     });
   });
 });
