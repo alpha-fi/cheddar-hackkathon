@@ -10,34 +10,34 @@ describe("CheddarToken", function () {
   beforeEach(async function () {
     [owner, addr1, addr2, addr3] = await ethers.getSigners();
     CheddarToken = await ethers.getContractFactory("CheddarToken");
-    cheddar = await CheddarToken.deploy("CheddarToken", addr1.address, 500);
+    cheddar = await CheddarToken.deploy("CheddarToken", addr1.address, ethers.parseUnits("500", 24));
   });
 
   describe("Initialization", function () {
     it("should have the correct initial settings", async function () {
       expect(await cheddar.minter()).to.equal(addr1.address);
-      expect(await cheddar.dailyQuota()).to.equal(ethers.parseUnits("555", 18));
-      expect(await cheddar.userQuota()).to.equal(ethers.parseUnits("500", 18));
+      expect(await cheddar.dailyQuota()).to.equal(ethers.parseUnits("555", 24));
+      expect(await cheddar.userQuota()).to.equal(ethers.parseUnits("500", 24));
     });
   });
 
   describe("Minting", function () {
     it("allows the minter to mint within the quota", async function () {
-      await expect(() => cheddar.connect(addr1).mint(addr2.address, 100, "0x0000000000000000000000000000000000000000"))
-        .to.changeTokenBalance(cheddar, addr2, ethers.parseUnits("100", 18));
+      await expect(() => cheddar.connect(addr1).mint(addr2.address, ethers.parseUnits("100", 24), "0x0000000000000000000000000000000000000000"))
+        .to.changeTokenBalance(cheddar, addr2, ethers.parseUnits("100", 24));
     });
 
     it("resets the daily quota after a day", async function () {
-      await cheddar.connect(addr1).mint(addr2.address, 555, "0x0000000000000000000000000000000000000000");
+      await cheddar.connect(addr1).mint(addr2.address, ethers.parseUnits("555", 24), "0x0000000000000000000000000000000000000000");
       await network.provider.send("evm_increaseTime", [DAY_IN_SECONDS]);
       await network.provider.send("evm_mine");
-      await expect(() => cheddar.connect(addr1).mint(addr2.address, 100, "0x0000000000000000000000000000000000000000"))
-        .to.changeTokenBalance(cheddar, addr2, ethers.parseUnits("100", 18));
+      await expect(() => cheddar.connect(addr1).mint(addr2.address, ethers.parseUnits("100", 24), "0x0000000000000000000000000000000000000000"))
+        .to.changeTokenBalance(cheddar, addr2, ethers.parseUnits("100", 24));
     });
 
     it("handles referral bonus correctly", async function () {
-      await cheddar.connect(addr1).mint(addr2.address, 200, addr3.address);
-      expect(await cheddar.balanceOf(addr3.address)).to.equal(ethers.parseUnits("10", 18)); // 5% referral bonus
+      await cheddar.connect(addr1).mint(addr2.address, ethers.parseUnits("200", 24), addr3.address);
+      expect(await cheddar.balanceOf(addr3.address)).to.equal(ethers.parseUnits("10", 24)); // 5% referral bonus
     });
   });
 
@@ -55,10 +55,10 @@ describe("CheddarToken", function () {
     });
 
     it("allows the owner to adjust quotas", async function () {
-      await cheddar.connect(owner).setDailyQuota(1000);
-      expect(await cheddar.dailyQuota()).to.equal(ethers.parseUnits("1000", 18));
-      await cheddar.connect(owner).setUserQuota(200);
-      expect(await cheddar.userQuota()).to.equal(ethers.parseUnits("200", 18));
+      await cheddar.connect(owner).setDailyQuota(ethers.parseUnits("1000", 24));
+      expect(await cheddar.dailyQuota()).to.equal(ethers.parseUnits("1000", 24));
+      await cheddar.connect(owner).setUserQuota(ethers.parseUnits("0.5", 24));
+      expect(await cheddar.userQuota()).to.equal(ethers.parseUnits("0.5", 24));
     });
   });
 });

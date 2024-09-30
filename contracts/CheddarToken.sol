@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -11,7 +11,7 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
     address public minter;
     bool public active = true;
 
-    uint256 public dailyQuota = 555 * 10**18; // Default daily quota set to 555 tokens, adjusted for decimals
+    uint256 public dailyQuota = 555 * 10 ** 24; // Default daily quota set to 555 tokens, adjusted for decimals
     uint256 public userQuota;
 
     mapping(address => uint256) public userLastMintDay;
@@ -26,11 +26,19 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
         uint256 _userQuota
     ) ERC20(name, "Cheddar") {
         minter = _minter;
-        userQuota = _userQuota * 10**18;
+        userQuota = _userQuota;
         currentDay = block.timestamp / DAY_IN_SECONDS;
     }
 
-    function mint(address recipient, uint256 amount, address referral) public returns (uint256, uint256) {
+    function decimals() public pure override returns (uint8) {
+        return 24;
+    }
+
+    function mint(
+        address recipient,
+        uint256 amount,
+        address referral
+    ) public returns (uint256, uint256) {
         require(msg.sender == minter, "Caller is not the minter");
         require(active, "Contract is deactivated");
         uint256 today = block.timestamp / DAY_IN_SECONDS;
@@ -39,17 +47,17 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
             currentDay = today;
         }
 
-        uint256 amountWithDecimals = amount * 10**18;
-        uint256 referralAmount = referral != address(0) ? amountWithDecimals / 20 : 0;
+        uint256 referralAmount = referral != address(0)
+            ? amount / 20
+            : 0;
         if (referral != address(0)) {
             _mint(referral, referralAmount);
         }
 
-        uint256 userAmount = amountWithDecimals - referralAmount;
-        // require(todayMinted + amountWithDecimals <= dailyQuota, "Daily mint quota exceeded");
-        todayMinted = todayMinted + amountWithDecimals <= dailyQuota ? 
-            todayMinted + amountWithDecimals : 
-            dailyQuota;
+        uint256 userAmount = amount - referralAmount;
+        todayMinted = todayMinted + amount <= dailyQuota
+            ? todayMinted + amount
+            : dailyQuota;
 
         if (userLastMintDay[recipient] != today) {
             userDailyMinted[recipient] = 0;
@@ -60,7 +68,9 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
             return (0, referralAmount); // User has reached their quota, no minting for the user but referral processed.
         }
 
-        uint256 mintAmount = (userQuota - alreadyMinted < userAmount) ? (userQuota - alreadyMinted) : userAmount;
+        uint256 mintAmount = (userQuota - alreadyMinted < userAmount)
+            ? (userQuota - alreadyMinted)
+            : userAmount;
         userDailyMinted[recipient] += mintAmount;
         _mint(recipient, mintAmount);
 
@@ -76,10 +86,10 @@ contract CheddarToken is ERC20, ERC20Burnable, Ownable(msg.sender) {
     }
 
     function setDailyQuota(uint256 newDailyQuota) public onlyOwner {
-        dailyQuota = newDailyQuota * 10**18; // Adjust quota for decimals
+        dailyQuota = newDailyQuota;
     }
 
     function setUserQuota(uint256 newUserQuota) public onlyOwner {
-        userQuota = newUserQuota * 10**18; // Adjust user quota for decimals
+        userQuota = newUserQuota;
     }
 }
